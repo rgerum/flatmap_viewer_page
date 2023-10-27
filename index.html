@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plot with Parameters</title>
+    <script src="https://unpkg.com/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
+
+
+    <script src="js/numpy_to_js.js"></script>
+    <script src="js/flat_map.js"></script>
+    <script src="js/update_image.js"></script>
+
+
+    <style>
+        body {
+            background: #151515;
+            color: #c4c4c4;
+            font-family: sans;
+            margin: 10px;
+        }
+        #plotContainer {
+            overflow: hidden;
+            border: 1px solid black;
+            width: 100%;
+            height: 400px;
+            position: relative;
+            border-radius: 10px;
+        }
+        #plotImage {
+            max-width: none;
+            transform-origin: top left;
+        }
+
+        .grid {
+            display: table;
+        }
+        .row {
+            display: table-row;
+        }
+        .square {
+            display: table-cell;
+            width: 10px;
+            height: 10px;
+            border: 1px solid black;
+            background: gray;
+        }
+        .square_active {
+            display: table-cell;
+            width: 10px;
+            height: 10px;
+            border: 1px solid black;
+            background: red;
+        }
+        #plotImage {
+            position: relative;
+        }
+        .image_centering {
+            margin: 0 auto;
+            /*height: 119px;
+            margin: 0 auto;
+            display: block;*/
+                display: flex;
+                justify-content: center; /* Horizontally centers the image */
+                align-items: center;     /* Vertically centers the image */
+                height: 400px;           /* Adjust as needed */
+                width: 300px;            /* Adjust as needed */
+        }
+        .image {
+            position: absolute;
+            //top: 0;
+            //left: 0;
+            max-height: 100%;
+
+
+        }
+
+        .check_list {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .check_list label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.8em;
+            padding-top: 13px;
+        }
+        .check_list span {
+            transform: rotate(-90deg);
+            height: 1em;
+            width: 1em;
+            text-align: right;
+        }
+
+        .point {
+            position: absolute;
+            display: block;
+            width: 1px;
+            height: 1px;
+            background: red;
+            border-radius: 3px;
+        }
+
+        #componentExamples {
+            width: 100%;
+            overflow-x: scroll;
+            border-radius: 10px;
+            background: #262626c9;
+            min-height: 128px;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        #componentExamples div {
+            display: flex;
+        }
+
+        .spinner {
+            border: 8px solid rgba(255, 255, 255, 0.3); /* Light grey */
+            border-radius: 50%; /* Circular shape */
+            border-top: 8px solid #333; /* Dark grey */
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none; /* Hidden by default */
+        }
+
+        @keyframes spin {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+
+        #clicked {
+            position: absolute;
+            background: #262626c9;
+            padding: 5px;
+            top: 5px;
+            border-radius: 10px;
+            left: 5px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .control_box {
+            background: #262626c9;
+            padding: 7px;
+            border-radius: 10px;
+            overflow: hidden;
+            /* margin: 5px; */
+        }
+
+        .main_column {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control_box_title {
+            background: #393939;
+            width: 100%;
+            display: block;
+            margin: -10px -10px 0;
+            padding: 10px 10px 5px;
+            font-variant: small-caps;
+        }
+
+        .row_title2 {
+            position: relative; /* Make the box a position reference for the title */
+            padding-left: 30px; /* Space for the rotated title */
+            background: #393939;
+        }
+
+        .row_title2 div {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            transform: translate(4px, 50%) rotate(-90deg);
+            transform-origin: top left;
+            white-space: nowrap;
+            padding-top: 0px;
+        }
+    </style>
+</head>
+<body>
+    <div id="grid"></div>
+    <div class="main_column">
+        <form id="plotForm" class="controls">
+            <div class="control_box">
+                <span class="control_box_title">Subjects</span>
+                <div id="subject_ids" class="check_list"></div>
+                Min Sub Overlap Count: <input type="number" name="min_subject_overlap_count" min="1" max="8" value="1" oninput="update_plot()">
+            </div>
+            <div class="control_box">
+                <span class="control_box_title">Components</span>
+                <div id="component_ids" class="check_list"></div>
+                <input type="button" value="none" id="btn_select_none">
+                <input type="button" value="all" id="btn_select_all">
+            </div>
+        </form>
+
+        <div id="plotContainer">
+
+            <div id="plotImage" style="cursor: auto">
+                <div class="image_centering">
+                <img src="/static_data/background.png" id="plotImage1" alt="Generated Plot" class="image">
+                <canvas id="myCanvas" width="2274" height="1024" style="position: relative;" class="image"></canvas>
+                <img src="/static_data/foreground.png" id="plotImage2" alt="Generated Plot" class="image">
+                <div class="point" id="point"></div>
+                </div>
+            </div>
+            <span id="clicked"></span>
+            <span id="spinner" class="spinner"></span>
+        </div>
+        <div id="componentExamples">
+
+        </div>
+    </div>
+
+    <script>
+
+        fetch('static_data/all_component_ids.json', {}).then(function(response) {
+            return response.json();
+        }).then(function(init_data) {
+        let component_count = init_data.all_component_ids.length;
+        let subject_count = init_data.subject_ids.length;
+
+        function add_image(parent, src, w, h) {
+            let img = document.createElement("img");
+            img.src = src;
+            if(w)
+                img.width = w;
+            if(h)
+                img.height = h;
+            parent.appendChild(img);
+            return img;
+        }
+
+        function add_row(parent, component_id) {
+            let row = document.createElement("div");
+
+            let title = document.createElement("div");
+            title.className = "row_title2";
+            let title2 = document.createElement("div");
+            title2.innerText = component_id;
+            title.appendChild(title2);
+            row.appendChild(title);
+
+            parent.appendChild(row);
+            for(let i = 1; i < 11; i++) {
+                add_image(row, "static_data/component_example_images/" + component_id + "_" + i + ".png", 128, 128);
+            }
+        }
+        window.add_row = add_row
+
+        function update_plot() {
+            console.time("Load");
+            const form = document.getElementById("plotForm");
+            const formData = new URLSearchParams(new FormData(form));
+
+            const subject_ids = formData.getAll("subject_ids");
+            const component_ids = formData.getAll("component_ids");
+            const min_subject_overlap_count = parseInt(formData.get("min_subject_overlap_count"));
+
+            let component_ids_array = component_ids.map(x => init_data.all_component_ids.indexOf(parseInt(x)));
+
+            startWorker(component_ids_array, subject_ids, min_subject_overlap_count)
+        }
+        document.update_plot = update_plot
+
+
+        function add_check_box(placeholder, name, index) {
+            let label = document.createElement("label");
+            let text = document.createElement("span");
+            text.innerText = index;
+            label.appendChild(text);
+            let checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.name = name;
+            checkbox.value = index;
+            checkbox.oninput = update_plot;
+            label.title = index;
+            label.appendChild(checkbox);
+            placeholder.appendChild(label);
+            return checkbox;
+        }
+
+        let placeholder = document.getElementById("subject_ids");
+        for (let i of init_data.subject_ids) {
+            let checkbox = add_check_box(placeholder, "subject_ids", i);
+            checkbox.checked = true;
+        }
+        let placeholder_comp = document.getElementById("component_ids");
+        for (let i of init_data.all_component_ids) {
+            add_check_box(placeholder_comp, "component_ids", i);
+        }
+        document.getElementById("btn_select_none").onclick = function() {
+            for(let elem of placeholder_comp.querySelectorAll("input"))
+                elem.checked = false;
+            update_plot();
+        }
+        document.getElementById("btn_select_all").onclick = function() {
+            for(let elem of placeholder_comp.querySelectorAll("input"))
+                elem.checked = true;
+            update_plot();
+        }
+
+        // Initialize panzoom
+        const plotImage = document.getElementById("plotImage");
+        const panzoom = Panzoom(plotImage, { canvas: true, })
+        const parent = plotImage.parentElement
+        // No function bind needed
+        parent.addEventListener('wheel', panzoom.zoomWithWheel)
+
+        // This demo binds to shift + wheel
+        parent.addEventListener('wheel', function(event) {
+          if (!event.shiftKey) return
+          panzoom.zoomWithWheel(event)
+        })
+
+        let plotImage2 = document.getElementById("plotImage2");
+        plotImage2.addEventListener("click", function(event) {
+            const rect = plotImage2.getBoundingClientRect();
+
+            // Calculate click position as percentage of bounding box dimensions
+            const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
+            const yPercent = ((event.clientY - rect.top) / rect.height) * 100;
+
+            const form = document.getElementById("plotForm");
+            const formData = new URLSearchParams(new FormData(form));
+            const subject_ids = formData.getAll("subject_ids");
+            const component_ids = formData.getAll("component_ids");
+            const min_subject_overlap_count = parseInt(formData.get("min_subject_overlap_count"));
+            let component_ids_array = component_ids.map(x => init_data.all_component_ids.indexOf(parseInt(x)));
+            getPixelValue(component_ids_array, component_ids, subject_ids, min_subject_overlap_count, parseInt(xPercent * 2274 / 100), parseInt(yPercent * 1024 / 100));
+        });
+
+        });
+    </script>
+</body>
+</html>
