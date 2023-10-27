@@ -67,7 +67,7 @@ async function show_image(component_ids_array, subject_ids, min_subject_overlap_
     let all_bits = convertIndexToBits(subject_ids);
     let data_arrays = await loadAllNpyInParallel(component_ids_array);
 
-    const data_masks_all = await cachedLoadNpy("../static_data/component_masks/data_masks_all.npy.gz");
+    const data_masks_all = await cachedLoadNpy("../static_data/component_masks/data_masks_all.npy");
 
     console.timeEnd("LoadBinary");
 
