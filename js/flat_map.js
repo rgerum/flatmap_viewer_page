@@ -28,7 +28,6 @@ async function cachedLoadNpy(url) {
 
 
 function convertIndexToBits(subject_ids) {
-    console.log("convertIndexToBits", subject_ids)
     let all_bits = 0;
     for(let id of subject_ids) {
         all_bits |= 1 << id;
@@ -61,8 +60,25 @@ async function get_components(component_ids_array, component_ids, subject_ids, m
     return components
 }
 
+async function get_count(component_id, subject_ids, min_subject_overlap_count) {
+    console.log("get_count", component_id, subject_ids, min_subject_overlap_count)
+    const bitCountTable = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) {
+        bitCountTable[i] = countBits(i, subject_ids) >= min_subject_overlap_count;
+    }
+
+    let data_array = await loadAllNpyInParallel([component_id]);
+    let a = data_array[0].data;
+    let width = data_array[0].shape[1];
+    let height = data_array[0].shape[0];
+    let count = 0;
+    for (let i = 0; i < width * height; i++) {
+        count += bitCountTable[a[i]];
+    }
+    return count
+}
+
 async function show_image(component_ids_array, subject_ids, min_subject_overlap_count) {
-    console.log("show_image", component_ids_array, subject_ids, min_subject_overlap_count)
     console.time("LoadBinary");
 
     let all_bits = convertIndexToBits(subject_ids);

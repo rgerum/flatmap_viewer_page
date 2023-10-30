@@ -19,7 +19,7 @@ worker.addEventListener('message', function(e) {
         element_examples.innerHTML = "";
         for(let i of e.data.pixel) {
             add_row(element_examples, i);
-            document.getElementById("clicked").innerText += " " + i + ",";
+            document.getElementById("clicked").innerText += " " + i + " (" + e.data.counts[i] + "), ";
         }
     }
 });
@@ -37,8 +37,14 @@ async function startWorker(component_ids_array, subject_ids, min_subject_overlap
 }
 
 async function getPixelValue(component_ids_array, component_ids, subject_ids, min_subject_overlap_count, x, y) {
-    document.getElementById("point").style.left = x + "px";
-    document.getElementById("point").style.top = y + "px";
+    let canvas = document.getElementById("myCanvasPoint");
+    let ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath();
+    ctx.arc(x, y, 1, 0, 2 * Math.PI, false);
+    ctx.fillStyle = 'red';
+    ctx.fill();
+
     // Start the worker with some data
     worker.postMessage({
         type: 'pixel',

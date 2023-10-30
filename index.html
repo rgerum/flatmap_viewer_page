@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Plot with Parameters</title>
+    <title>Flatmap Viewer</title>
     <script src="https://unpkg.com/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/1.0.11/pako.min.js"></script>
 
@@ -95,15 +95,6 @@
             text-align: right;
         }
 
-        .point {
-            position: absolute;
-            display: block;
-            width: 1px;
-            height: 1px;
-            background: red;
-            border-radius: 3px;
-        }
-
         #componentExamples {
             width: 100%;
             overflow-x: scroll;
@@ -172,6 +163,8 @@
             margin: -10px -10px 0;
             padding: 10px 10px 5px;
             font-variant: small-caps;
+            text-overflow: ellipsis;
+            overflow: hidden;
         }
 
         .row_title2 {
@@ -212,10 +205,10 @@
 
             <div id="plotImage" style="cursor: auto">
                 <div class="image_centering">
-                <img src="static_data/background.png" id="plotImage1" alt="Generated Plot" class="image">
-                <canvas id="myCanvas" width="2274" height="1024" style="position: relative;" class="image"></canvas>
-                <img src="static_data/foreground.png" id="plotImage2" alt="Generated Plot" class="image">
-                <div class="point" id="point"></div>
+                    <img src="static_data/background.png" id="plotImage1" alt="Generated Plot" class="image">
+                    <canvas id="myCanvas" width="2274" height="1024" class="image"></canvas>
+                    <img src="static_data/foreground.png" id="plotImage2" alt="Generated Plot" class="image">
+                    <canvas id="myCanvasPoint" width="2274" height="1024"  class="image"></canvas>
                 </div>
             </div>
             <span id="clicked"></span>
@@ -273,7 +266,10 @@
 
             let component_ids_array = component_ids.map(x => init_data.all_component_ids.indexOf(parseInt(x)));
 
-            startWorker(component_ids_array, subject_ids, min_subject_overlap_count)
+            startWorker(component_ids_array, subject_ids, min_subject_overlap_count);
+            if(last_pixel_x != undefined && last_pixel_y != undefined) {
+                pixelValueInformation(last_pixel_x, last_pixel_y);
+            }
         }
         document.update_plot = update_plot
 
@@ -327,21 +323,30 @@
           panzoom.zoomWithWheel(event)
         })
 
-        let plotImage2 = document.getElementById("plotImage2");
-        plotImage2.addEventListener("click", function(event) {
-            const rect = plotImage2.getBoundingClientRect();
-
-            // Calculate click position as percentage of bounding box dimensions
-            const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
-            const yPercent = ((event.clientY - rect.top) / rect.height) * 100;
-
+        let last_pixel_x = undefined;
+        let last_pixel_y = undefined;
+        function pixelValueInformation(x, y) {
             const form = document.getElementById("plotForm");
             const formData = new URLSearchParams(new FormData(form));
             const subject_ids = formData.getAll("subject_ids");
             const component_ids = formData.getAll("component_ids");
             const min_subject_overlap_count = parseInt(formData.get("min_subject_overlap_count"));
             let component_ids_array = component_ids.map(x => init_data.all_component_ids.indexOf(parseInt(x)));
-            getPixelValue(component_ids_array, component_ids, subject_ids, min_subject_overlap_count, parseInt(xPercent * 2274 / 100), parseInt(yPercent * 1024 / 100));
+            getPixelValue(component_ids_array, component_ids, subject_ids, min_subject_overlap_count, x, y);
+            last_pixel_x = x;
+            last_pixel_y = y;
+        }
+
+        let plotImage2 = document.getElementById("myCanvasPoint");
+        plotImage2.addEventListener("click", function(event) {
+            const rect = plotImage2.getBoundingClientRect();
+
+            // Calculate click position as percentage of bounding box dimensions
+            const xPercent = ((event.clientX - rect.left) / rect.width) * 100;
+            const yPercent = ((event.clientY - rect.top) / rect.height) * 100;
+            let x = parseInt(xPercent * 2274 / 100);
+            let y = parseInt(yPercent * 1024 / 100);
+            pixelValueInformation(x, y);
         });
 
         });
