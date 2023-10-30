@@ -28,6 +28,7 @@ async function cachedLoadNpy(url) {
 
 
 function convertIndexToBits(subject_ids) {
+    console.log("convertIndexToBits", subject_ids)
     let all_bits = 0;
     for(let id of subject_ids) {
         all_bits |= 1 << id;
@@ -61,7 +62,7 @@ async function get_components(component_ids_array, component_ids, subject_ids, m
 }
 
 async function show_image(component_ids_array, subject_ids, min_subject_overlap_count) {
-    get_components(component_ids_array, subject_ids, min_subject_overlap_count, 1021, 272)
+    console.log("show_image", component_ids_array, subject_ids, min_subject_overlap_count)
     console.time("LoadBinary");
 
     let all_bits = convertIndexToBits(subject_ids);
