@@ -20,25 +20,42 @@ export async function initScene({dom_elem}) {
     document.renderer = renderer;
     document.camera = camera;
 
-    camera.position.z = 1.7;
-    console.log("camera", camera)
+    camera.position.z = -1.7;
+    camera.position.z = -1.590;
+    camera.position.x = -0.601;
 
     // Set up orbit controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.update();
+    scene.controls = controls;
 
-
-// Animation loop
+    // Animation loop
     const light = new THREE.PointLight(0xffffff, 1, 100);
     light.position.set(10, 10, -10);
     scene.add(light);
 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    function setLightStrength(strength, strength2) {
+        ambientLight.intensity = strength;
+        light.intensity = strength2;
+    }
+    window.setLightStrength = setLightStrength
+    scene.setLightStrength = setLightStrength
+
     const animate = () => {
         requestAnimationFrame(animate);
         controls.update();
-        light.position.x = camera.position.x;
-        light.position.y = camera.position.y;
-        light.position.z = camera.position.z;
+        // link the light to the camera
+        var campos = new THREE.Spherical().setFromVector3(camera.position);
+        var lightpos = new THREE.Spherical(
+            campos.radius,
+            campos.phi,
+            campos.theta + 30/180*Math.PI,
+        );
+        light.position.setFromSpherical(lightpos);
+
         renderer.render(scene, camera);
     };
 
@@ -60,70 +77,89 @@ export async function initScene({dom_elem}) {
     document.onWindowResize = onWindowResize
     document.onWindowResize();
 
-// Add a resize event listener
+    // Add a resize event listener
     window.addEventListener('resize', onWindowResize, false);
 
 
-// Animation control variable
+    // Animation control variable
     var animationRequestID = null;
 
+
     function animateCamera(targetPos, lookAtTarget, duration) {
-// Cancel any ongoing animation
+        controls.update();
+        controls.enabled = false;
+        //var targetPosition = new THREE.Vector3(0, 0, 2);
+        //var lookAtTarget = new THREE.Vector3(0, 0, 0);
+        //var duration = 2000; // 2000 ms
+
+        // Cancel any ongoing animation
         if (animationRequestID) {
             cancelAnimationFrame(animationRequestID);
         }
 
-// Get initial position and orientation
+        // Get initial position and orientation
         var initialPos = camera.position.clone();
         var initialSpherical = new THREE.Spherical().setFromVector3(initialPos);
         var targetSpherical = new THREE.Spherical().setFromVector3(targetPos);
+        let phi = [initialSpherical.phi, targetSpherical.phi];
+        let theta = [initialSpherical.theta, targetSpherical.theta];
+        if(theta[1] - theta[0] > Math.PI) {
+            theta[1] -= 2 * Math.PI;
+        }
+        if(theta[1] - theta[0] < -Math.PI) {
+            theta[1] += 2 * Math.PI;
+        }
+        duration = Math.max(
+            Math.abs(theta[1] - theta[0]) * 1000,
+            Math.abs(phi[1] - phi[0]) * 1000);
 
-// Get initial and target look-at position
+        // Get initial and target look-at position
         var initialLookAt = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         var targetLookAt = lookAtTarget.clone().sub(initialPos).normalize();
 
-// Start time
+        // Start time
         var startTime = Date.now();
 
 
-
-
-// Animation loop
+        // Animation loop
         function animate() {
-// Calculate elapsed time and progress
+            // Calculate elapsed time and progress
             var elapsedTime = Date.now() - startTime;
             var progress = elapsedTime / duration;
 
-// Check if the animation is complete
+            // Check if the animation is complete
             if (progress >= 1) {
+                controls.reset();
                 camera.position.copy(targetPos);
                 camera.lookAt(lookAtTarget);
                 renderer.render(scene, camera);
+                controls.enabled = true;
+                window.controls = controls
                 return;
             }
 
-// Interpolate spherical coordinates
+            // Interpolate spherical coordinates
             var interpolatedSpherical = new THREE.Spherical(
                 THREE.MathUtils.lerp(initialSpherical.radius, targetSpherical.radius, progress),
-                THREE.MathUtils.lerp(initialSpherical.phi, targetSpherical.phi, progress),
-                THREE.MathUtils.lerp(initialSpherical.theta, targetSpherical.theta, progress)
+                THREE.MathUtils.lerp(phi[0], phi[1], progress),
+                THREE.MathUtils.lerp(theta[0], theta[1], progress)
             );
 
-// Interpolate look-at position
+            // Interpolate look-at position
             var currentLookAt = new THREE.Vector3().lerpVectors(initialLookAt, targetLookAt, progress);
-            console.log(interpolatedSpherical, currentLookAt)
+            //console.log(interpolatedSpherical, currentLookAt)
 
-// Update camera position and orientation
+            // Update camera position and orientation
             camera.position.setFromSpherical(interpolatedSpherical);
-            camera.lookAt(currentLookAt);
-//camera.lookAt(lookAtTarget);
+            //camera.lookAt(currentLookAt);
+            camera.lookAt(lookAtTarget);
 
-// Render and request next frame
+            // Render and request next frame
             renderer.render(scene, camera);
             animationRequestID = requestAnimationFrame(animate);
         }
 
-// Start the animation
+        // Start the animation
         animate();
     }
 
@@ -176,17 +212,28 @@ function addMesh(scene, pt, vtx) {
     geometry.setIndex(vtx);
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pt.data), 3));
 
+    geometry.addGroup(0, 606011*3, 0); // Use material index 0
+    geometry.addGroup(606011*3, 655360*3, 1);
+
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('static_data/foreground2.png', () => {
+      // Update rendering when the texture is loaded
+      scene.renderer.render(scene, scene.camera);
+    });
+    texture.magFilter = THREE.NearestFilter
+
+
     // MeshBasicMaterial
-    const material = new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide});
-    //const material = new THREE.MeshLambertMaterial({vertexColors: true }); // red diffuse material
+    const material = new THREE.MeshLambertMaterial({vertexColors: true,
+        map: texture,
+        side: THREE.DoubleSide});
+    material.roi_texture = texture
 
+    const material2 = new THREE.MeshLambertMaterial({vertexColors: true,
+        side: THREE.DoubleSide});
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambientLight);
-
-geometry.computeVertexNormals(); // This is important for diffuse shading
-
-    const mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, [material, material2]);
+    geometry.computeVertexNormals(); // This is important for diffuse shading
     scene.add(mesh);
 
 
@@ -216,6 +263,24 @@ export async function add_brain({scene,
 
     const mesh = addMesh(scene, pt2, vtx);
 
+    // Calculate scale and offset to normalize the UVs
+    const scaleX = -0.15743183817062445//*0 + 356/(1137.0*2);
+    const scaleY = 0.349609375//*0 + 356/(512.0*2);
+    const offsetX = 0.5//*0 + -1137.0/(1137.0*2);
+    const offsetY = 0.5//*0 + -512.0/(512.0*2);
+
+    // Now map the vertices to UV space
+    const uvs = new Float32Array(vtx_flat.length * 2);
+    for (let i = 0; i < 327684; i++) {
+        uvs[i * 2] = pt.data[i*3] * scaleX + offsetX;
+        uvs[i * 2 + 1] = pt.data[i*3+1]  * scaleY + offsetY;
+    }
+    window.uvs = uvs
+    window.vtx_flat = vtx_flat
+    window.pt = pt
+    mesh.geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    //
+
     let last_shape_index = 1;
     let pivot = 0;
 
@@ -225,6 +290,9 @@ export async function add_brain({scene,
     }
 
     function set_shape(index) {
+        let flatness = 1-Math.min(index, 1);
+        setLightStrength(0.5+0.5*flatness, 1-flatness)
+
         let p = pivot;
         if (index < 1)
             p = pivot * index;
@@ -253,10 +321,36 @@ export async function add_brain({scene,
         }
         mesh.geometry.computeVertexNormals(); // This is important for diffuse shading
         mesh.geometry.getAttribute('position').needsUpdate = true;
-        //update_active_voxel();
+        update_active_voxel();
     }
     function set_shape_animated(endIndex) {
-        let duration = 300;
+        if(endIndex === 0) {
+            animateCamera( new THREE.Vector3(0, 0, -2), new THREE.Vector3(0, 0, 0), 2000);
+            scene.controls.mouseButtons = {
+                LEFT: THREE.MOUSE.PAN,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.ROTATE
+            }
+            scene.controls.touches = {
+                ONE: THREE.TOUCH.PAN,
+                TWO: THREE.TOUCH.DOLLY_PAN
+            }
+        }
+        else {
+            if(last_shape_index === 0) {
+                animateCamera( new THREE.Vector3(-0.6, 0, -1.59), new THREE.Vector3(0, 0, 0), 2000);
+            }
+            scene.controls.mouseButtons = {
+                LEFT: THREE.MOUSE.ROTATE,
+                MIDDLE: THREE.MOUSE.DOLLY,
+                RIGHT: THREE.MOUSE.PAN
+            }
+            scene.controls.touches = {
+                ONE: THREE.TOUCH.ROTATE,
+                TWO: THREE.TOUCH.DOLLY_PAN
+            }
+        }
+        let duration = 500;
         let startIndex = last_shape_index;
 
         animateShapeChange(duration, (progress) => {
@@ -265,9 +359,10 @@ export async function add_brain({scene,
 
             // Call your set_shape function
             set_shape(currentIndex);
-            document.getElementById("shape").value = currentIndex
+            document.getElementById("shape").value = currentIndex * 100;
         })
     }
+    set_shape_animated(0)
 
     function rotateAroundY(point, angleDegrees, a, f) {
         // Convert angle to radians
@@ -325,6 +420,26 @@ export async function add_brain({scene,
         console.timeEnd("set_voxel_data");
     }
 
+    function set_voxel_data_reset() {
+        console.time("set_voxel_data")
+        let array = mesh.geometry.getAttribute('color').array;
+        for(let i = 0; i < curvature.length; i += 1) {
+            if(curvature[i] > 0) {
+                array[i * 3 + 0] = 0.62;
+                array[i * 3 + 1] = 0.62;
+                array[i * 3 + 2] = 0.62;
+            }
+            else {
+                array[i * 3 + 0] = 0.37;
+                array[i * 3 + 1] = 0.37;
+                array[i * 3 + 2] = 0.37;
+            }
+        }
+        mesh.geometry.getAttribute('color').needsUpdate = true;
+        console.timeEnd("set_voxel_data");
+    }
+    set_voxel_data_reset();
+
     document.set_mesh_colors = set_mesh_colors;
 
 
@@ -370,10 +485,41 @@ export async function add_brain({scene,
 
         for (let obj of [cube, cube2, cube3, cube4]) {
             obj.position.set(x, y, z);
-
         }
+        if(last_shape_index === 0)
+            cube4.position.set(0, 0, -10000);
     }
     //
+
+    let show_roi = true;
+    function set_roi_show(show) {
+        show_roi = show
+        set_texture(last_data[0], last_data[1], last_data[2]);
+        return
+        if(show)
+            mesh.material[0].map = mesh.material[0].roi_texture;
+        else
+            mesh.material[0].map = null;
+        mesh.material[0].needsUpdate = true;
+    }
+
+    let last_data = null;
+    async function set_texture(data, width, height) {
+        last_data = [data, width, height];
+        if(show_roi) {
+            let foreground = await getPngData("static_data/foreground.png");
+            data = overlayImagesUint8(data, foreground, width, height);
+        }
+
+        const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
+        texture.needsUpdate = true; // Update the texture
+        texture.flipY = true;
+        texture.magFilter = THREE.NearestFilter
+        mesh.material[0].map = texture;
+        mesh.material[0].needsUpdate = true;
+        mesh.material[0].vertexColors = false;
+    }
+    window.set_texture = set_texture
 
     return {
         mesh,
@@ -383,6 +529,7 @@ export async function add_brain({scene,
         set_shape_animated,
         set_voxel_data,
         set_voxel_selected,
+        set_roi_show,
     };
 }
 
