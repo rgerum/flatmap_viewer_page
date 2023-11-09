@@ -1,21 +1,25 @@
+import {overlap_matrix} from "./flat_map.mjs";
+
 const worker = new Worker('js/worker.mjs', {type: 'module'});
 
 worker.addEventListener('message', function (e) {
     if (e.data.type === 'image') {
-        var myEvent = new CustomEvent('voxel_data_changed', {detail: {image: e.data.data32_index}});
+        var myEvent = new CustomEvent('voxel_data_changed', {detail: {image: e.data.data32_index, matrix_overlap: e.data.matrix_overlap}});
         window.dispatchEvent(myEvent);
 
         document.querySelectorAll(".spinner").forEach(x => x.style.display = "none");
 
+
+
     }
     if (e.data.type === 'pixel') {
+        var myEvent = new CustomEvent('display_components', {detail: {components: e.data.pixel}});
+        window.dispatchEvent(myEvent);
+
         document.getElementById("clicked").innerText = "Clicked: ";
-        let element_examples = document.getElementById("componentExamples");
-        element_examples.innerHTML = "";
         document.getElementsByName("x")[0].value = e.data.x;
         document.getElementsByName("y")[0].value = e.data.y;
         for (let i of e.data.pixel) {
-            add_row(element_examples, i);
             document.getElementById("clicked").innerText += " " + i + " (" + e.data.counts[i] + "), ";
         }
     }
