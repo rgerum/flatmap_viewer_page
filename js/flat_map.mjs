@@ -220,16 +220,20 @@ export async function show_image({component_ids_array, subject_ids, min_subject_
     return data32_index;
 }
 
-export async function show_image_depth({component_ids_array, subject_ids, min_subject_overlap_count, layer_ids, runs, data_select, min_val, max_val, mean_val}) {
+export async function show_image_depth({component_ids_array, subject_ids, min_subject_overlap_count, layer_ids, runs, data_select, min_val, max_val, mean_val, range_val}) {
     console.log("show_image_depth", data_select)
     const all_bits = convertIndexToBits(subject_ids);
     const bitCountTable = getBitCountTable(subject_ids, min_subject_overlap_count);
 
-    let data_depth = min_val;
-    if(data_select == "max")
+    let data_depth;
+    if(data_select == "min")
+        data_depth = min_val;
+    else if(data_select == "max")
         data_depth = max_val;
     else if(data_select == "mean")
         data_depth = mean_val;
+    else if(data_select == "range")
+        data_depth = range_val;
 
     console.time("LoadBinary");
     const data_arrays = await loadAllNpyInParallel(component_ids_array, runs);
