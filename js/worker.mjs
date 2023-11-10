@@ -12,7 +12,6 @@ import {
 self.addEventListener('message', async function (e) {
     if (e.data.type === 'image') {
         let data32_index = await show_image(e.data);
-        console.log("e.data.data_select", e.data.data_select)
         if(e.data.data_select !== "none")
             data32_index = await show_image_depth(e.data);
 
