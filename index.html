@@ -396,6 +396,13 @@
                                                   onclick="update_plot()"></label>
 
             <select id="matrix_select" name="matrix_select" oninput="update_plot()"></select>
+
+            <select id="data_select" name="data_select" oninput="update_plot()">
+                <option value="-1">none</option>
+                <option value="0">min</option>
+                <option value="1">max</option>
+                <option value="2">mean</option>
+            </select>
             <input type="hidden" name="x" value="0"/>
             <input type="hidden" name="y" value="0"/>
             <input type="hidden" name="voxel" value="0"/>
@@ -493,6 +500,7 @@
             const min_subject_overlap_count = parseInt(formData.get("min_subject_overlap_count"));
 
             const matrix_select = formData.get("matrix_select");
+            const data_select = formData.get("data_select");
 
             let component_ids_array = component_ids.map(x => init_data.all_component_ids.indexOf(parseInt(x)));
 
@@ -519,6 +527,7 @@
                 show_groups,
                 show_matrix,
                 matrix_select,
+                data_select,
             }
         }
 
