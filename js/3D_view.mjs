@@ -6,8 +6,14 @@ import {
   cachedLoadNpy,
   getPngData,
   overlayImagesUint8,
+  loadAllPromises,
 } from "./numpy_to_js.mjs";
-import { get_cmap, interpolateColor, get_cmap_display } from "./colormaps.mjs";
+import {
+  get_cmap,
+  interpolateColor,
+  get_cmap_display,
+  get_cmap_uint32,
+} from "./colormaps.mjs";
 
 let animation_callback = { shape_change: null };
 
@@ -246,7 +252,7 @@ function add_click(mesh, renderer, camera, callback) {
   renderer.domElement.addEventListener("click", onDocumentMouseClick, false);
 }
 
-function addMesh(scene, pt, vtx) {
+function addMesh(scene, pt, vtx, count_a, count_b) {
   // Define your points and vertices
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute(
@@ -259,12 +265,12 @@ function addMesh(scene, pt, vtx) {
     new THREE.BufferAttribute(new Float32Array(pt.data), 3),
   );
 
-  geometry.addGroup(0, 606011 * 3, 0); // Use material index 0
-  geometry.addGroup(606011 * 3, 655360 * 3, 1);
+  geometry.addGroup(0, count_a * 3, 0); // Use material index 0
+  geometry.addGroup(count_a * 3, count_b * 3, 1);
   //geometry.addGroup(0, 655360 * 3, 1);
 
   const textureLoader = new THREE.TextureLoader();
-  const texture = textureLoader.load("static_data/foreground.png", () => {
+  const texture = textureLoader.load("static_data/background2.png", () => {
     // Update rendering when the texture is loaded
     scene.renderer.render(scene, scene.camera);
   });
@@ -301,38 +307,59 @@ export async function add_brain({
   faces_pia,
   pt_wm,
   faces_wm,
+  curvature_path,
+  mapping_path,
+  overlays_path,
+  counts,
 }) {
-  let pt = await loadNpy(pt_flat);
-  let vtx_flat = await loadNpy(faces_flat);
-  vtx_flat = Array.prototype.slice.call(vtx_flat.data);
-  let vtx = await loadNpy(faces_inflated);
-  vtx = Array.prototype.slice.call(vtx.data);
+  let brain_data = await loadAllPromises({
+    pt: loadNpy(pt_flat),
+    faces_flat: loadNpy(faces_flat),
+    faces: loadNpy(faces_inflated),
+    pt2: loadNpy(pt_inflated),
+    pt3: loadNpy(pt_pia),
+    pt4: loadNpy(pt_wm),
+    counts_data: (await fetch(counts)).json(),
+    curvature: cachedLoadNpy(curvature_path),
+    cached_map: loadNpy(mapping_path),
+  });
+  console.log("brain_data", brain_data)
+  brain_data.curvature = brain_data.curvature.data;
 
-  let pt2 = await loadNpy(pt_inflated);
-  let pt3 = await loadNpy(pt_pia);
-  let pt4 = await loadNpy(pt_wm);
+  brain_data.count_a = brain_data.faces_flat.shape[0];
+  brain_data.count_b = brain_data.faces.shape[0];
 
-  const curvature = (await cachedLoadNpy("static_data/curvature.npy")).data;
+  brain_data.faces_flat = Array.prototype.slice.call(
+    brain_data.faces_flat.data,
+  );
+  brain_data.faces = Array.prototype.slice.call(brain_data.faces.data);
 
-  let voxel_count = pt2.shape[0];
+  const mesh = addMesh(scene, brain_data.pt2, brain_data.faces, brain_data.count_a, brain_data.count_b);
 
-  const mesh = addMesh(scene, pt2, vtx);
+  let max_x = 0;
+  let max_y = 0;
+  for (let i = 0; i < brain_data.pt.shape[0]; i++) {
+    let x = Math.abs(brain_data.pt.data[i * 3]);
+    let y = Math.abs(brain_data.pt.data[i * 3 + 1]);
+    if (x > max_x) max_x = x;
+    if (y > max_y) max_y = y;
+  }
 
   // Calculate scale and offset to normalize the UVs
-  const scaleX = -0.15743183817062445; //*0 + 356/(1137.0*2);
-  const scaleY = 0.349609375; //*0 + 356/(512.0*2);
+  const scaleX = -0.5 / max_x; //-0.15743183817062445; //*0 + 356/(1137.0*2);
+  //const scaleX = -0.15743183817062445; //*0 + 356/(1137.0*2);
+  const scaleY = 0.5 / max_y; //x0.349609375; //*0 + 356/(512.0*2);
+  //const scaleY = 0.349609375; //*0 + 356/(512.0*2);
   const offsetX = 0.5; //*0 + -1137.0/(1137.0*2);
   const offsetY = 0.5; //*0 + -512.0/(512.0*2);
 
   // Now map the vertices to UV space
-  const uvs = new Float32Array(vtx_flat.length * 2);
-  for (let i = 0; i < 327684; i++) {
-    uvs[i * 2] = pt.data[i * 3] * scaleX + offsetX;
-    uvs[i * 2 + 1] = pt.data[i * 3 + 1] * scaleY + offsetY;
+  const uvs = new Float32Array(brain_data.faces_flat.length * 2);
+  for (let i = 0; i < brain_data.faces_flat.length; i++) {
+    // 327684
+    uvs[i * 2] = brain_data.pt.data[i * 3] * scaleX + offsetX;
+    uvs[i * 2 + 1] = brain_data.pt.data[i * 3 + 1] * scaleY + offsetY;
   }
-  window.uvs = uvs;
-  window.vtx_flat = vtx_flat;
-  window.pt = pt;
   mesh.geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   //
 
@@ -343,9 +370,6 @@ export async function add_brain({
     pivot = index;
     set_shape(last_shape_index);
   }
-  scene.dom_controls.slider_pivot_input.oninput = function () {
-    set_pivot(this.value / 100);
-  };
 
   function set_shape(index) {
     let flatness = 1 - Math.min(index, 1);
@@ -394,13 +418,14 @@ export async function add_brain({
 
     let p = pivot;
     if (index < 1) p = pivot * index;
-    if (index < 1 && last_shape_index >= 1) mesh.geometry.setIndex(vtx_flat);
-    if (index >= 1 && last_shape_index < 1) mesh.geometry.setIndex(vtx);
+    if (index < 1 && last_shape_index >= 1) mesh.geometry.setIndex(brain_data.faces_flat);
+    if (index >= 1 && last_shape_index < 1) mesh.geometry.setIndex(brain_data.faces);
     last_shape_index = index;
-    let pt_a = [pt, pt2, pt3, pt4][Math.floor(index)];
-    let pt_b = [pt, pt2, pt3, pt4][Math.ceil(index)];
+    let pt_a = [brain_data.pt, brain_data.pt2, brain_data.pt3, brain_data.pt4][Math.floor(index)];
+    let pt_b = [brain_data.pt, brain_data.pt2, brain_data.pt3, brain_data.pt4][Math.ceil(index)];
     let f = index % 1;
     let array = mesh.geometry.getAttribute("position").array;
+
     /*for (let i = 0; i < array.length; i += 1) {
             array[i] = pt_a.data[i]*(1-f) + pt_b.data[i] * f;
         }*/
@@ -408,7 +433,8 @@ export async function add_brain({
       let point = [0, 0, 0];
       for (let j = 0; j < 3; j += 1)
         point[j] = pt_a.data[i + j] * (1 - f) + pt_b.data[i + j] * f;
-      if (i >= array.length / 2) point = rotateAroundY(point, -90 * p, -1.2, p);
+      if (i >= brain_data.counts_data.lh_count * 3)
+        point = rotateAroundY(point, -90 * p, -1.2, p);
       //-0.00240851 -0.2672709   0.22112776
       else point = rotateAroundY(point, 90 * p, -1.2, p); //-0.00240851 -0.2672709   0.22112776
       for (let j = 0; j < 3; j += 1) array[i + j] = point[j];
@@ -446,14 +472,6 @@ export async function add_brain({
       document.getElementById("shape").value = currentIndex * 100;
     });
   }
-  let i = 0;
-  for (let elem of scene.dom_controls.slider_buttons.querySelectorAll(
-    "button",
-  )) {
-    let value = i;
-    elem.onclick = () => set_shape_animated(value);
-    i += 1;
-  }
 
   function rotateAroundY(point, angleDegrees, a, f) {
     // Convert angle to radians
@@ -478,9 +496,6 @@ export async function add_brain({
   document.animateShapeChange = set_shape_animated;
   document.set_pivot = set_pivot;
   document.set_shape = set_shape;
-  scene.dom_controls.slider_shape_input.oninput = function () {
-    set_shape(this.value / 100);
-  };
 
   function set_mesh_colors(c) {
     mesh.geometry.getAttribute("color").array.set(c);
@@ -576,7 +591,7 @@ export async function add_brain({
   function update_texture() {
     set_texture(last_data[0], last_data[1], last_data[2]);
   }
-  window.update_texture = update_texture
+  window.update_texture = update_texture;
 
   let last_data = null;
 
@@ -591,7 +606,11 @@ export async function add_brain({
       //data = overlayImagesUint8(data, foreground, width, height);
 
       // Usage
-      data = await addSvgPathToImage("static_data/overlays_floc.svg", data);
+      try {
+        //data = await addSvgPathToImage(mapping_path, data);
+      } catch (e) {
+        console.error(e);
+      }
     }
 
     const texture = new THREE.DataTexture(
@@ -647,6 +666,101 @@ export async function add_brain({
 
   set_shape(0);
 
+  let mapping, mapping_inverse, width, height, voxel_count;
+
+  async function getMapping() {
+    if (!mapping) {
+          console.time("LoadBinary3");
+      let cached_map = brain_data.cached_map;
+      width = cached_map.shape[1];
+      height = cached_map.shape[0];
+      voxel_count = 0;
+      for (let i = 0; i < width * height; i++) {
+        if (cached_map.data[i] > voxel_count) {
+          voxel_count = cached_map.data[i] + 1;
+        }
+      }
+
+      mapping_inverse = cached_map.data;
+      mapping = [];
+      for (let i = 0; i < voxel_count; i++) { // brain_data.pt.shape[0]
+        mapping.push([]);
+      }
+      for (let i = 0; i < width * height; i++) {
+        let index = mapping_inverse[i];
+        if (index >= 0) mapping[mapping_inverse[i]].push(i);
+      }
+          console.timeEnd("LoadBinary3");
+    }
+    return [mapping, mapping_inverse, voxel_count];
+  }
+
+  async function voxels_to_flatmap(data32_index, cmap_max) {
+    console.time("voxels_to_flatmap");
+    let [mapping, mapping_inverse, voxel_count] = await getMapping();
+    let data32 = new Uint32Array(width * height);
+
+    let packedColor = get_cmap_uint32("turbo", cmap_max);
+    let packedColor2 = get_cmap_uint32("gray", 4);
+    const maxColorIndex = packedColor.length - 1;
+
+    voxel_count = 327684
+    if (data32_index.length != voxel_count) {
+      if(data32_index.length)
+        console.error("data32_index.length != voxel_count");
+      for (let i = 0; i < voxel_count; i++) {
+        let clr = brain_data.curvature[i] > 0 ? packedColor2[2] : packedColor2[1];
+
+        for (let ii of mapping[i]) {
+          data32[ii] = clr;
+        }
+      }
+    } else {
+      for (let i = 0; i < data32_index.length; i++) {
+        let clr;
+        if (data32_index[i] >= 0)
+          clr = packedColor[Math.min(data32_index[i], maxColorIndex)];
+        else clr = brain_data.curvature[i] > 0 ? packedColor2[2] : packedColor2[1];
+
+        for (let ii of mapping[i]) {
+          data32[ii] = clr;
+        }
+      }
+    }
+    console.timeEnd("voxels_to_flatmap");
+
+    let result_img = new Uint8ClampedArray(data32.buffer);
+    result_img.shape = [height, width, 4];
+    return result_img;
+  }
+
+  function set_active() {
+    for (let obj of [mesh, cube, cube2, cube3, cube4]) obj.visible = true;
+    scene.dom_controls.slider_pivot_input.oninput = function () {
+      set_pivot(this.value / 100);
+    };
+    set_pivot(scene.dom_controls.slider_pivot_input.value / 100);
+
+    scene.dom_controls.slider_shape_input.oninput = function () {
+      set_shape(this.value / 100);
+    };
+    set_shape(scene.dom_controls.slider_shape_input.value / 100);
+
+    let i = 0;
+    for (let elem of scene.dom_controls.slider_buttons.querySelectorAll(
+      "button",
+    )) {
+      let value = i;
+      elem.onclick = () => set_shape_animated(value);
+      i += 1;
+    }
+  }
+  function set_inactive() {
+    for (let obj of [mesh, cube, cube2, cube3, cube4]) obj.visible = false;
+  }
+
+  set_texture(await voxels_to_flatmap([], 1));
+
   return {
     mesh,
     set_mesh_colors,
@@ -657,7 +771,10 @@ export async function add_brain({
     set_voxel_selected,
     set_roi_show,
     set_texture,
+    voxels_to_flatmap,
     download_last_texture,
+    set_active,
+    set_inactive,
   };
 }
 
@@ -764,7 +881,20 @@ async function addSvgPathToImage(svgUrl, data) {
   const svgResponse = await fetch(svgUrl);
   const svgText = await svgResponse.text();
 
-  let rois = window.rois || ["V1", "V2", "V3", "V4", "OPA", "EBA", "OWFA", "FFA", "mfs-words", "PPA", "mTL-words", "RSC"];
+  let rois = window.rois || [
+    "V1",
+    "V2",
+    "V3",
+    "V4",
+    "OPA",
+    "EBA",
+    "OWFA",
+    "FFA",
+    "mfs-words",
+    "PPA",
+    "mTL-words",
+    "RSC",
+  ];
   window.rois = rois;
 
   // Parse the SVG file
@@ -784,7 +914,7 @@ async function addSvgPathToImage(svgUrl, data) {
   // This step is complex and depends on your SVG. You might need to manually set path commands.
   ctx.lineWidth = 2;
   ctx.strokeStyle = "white";
-  window.all_rois = []
+  window.all_rois = [];
   for (let p of Array.from(paths.children)) {
     window.all_rois.push(p.getAttribute("inkscape:label"));
     if (rois.includes(p.getAttribute("inkscape:label"))) {
@@ -794,7 +924,7 @@ async function addSvgPathToImage(svgUrl, data) {
         ctx.fillStyle = "white";
         ctx.font = "18px sans";
         ctx.textAlign = "center";
-        let pos = getCenterOfPath(pp)
+        let pos = getCenterOfPath(pp);
         ctx.fillText(p.getAttribute("inkscape:label"), pos[0], pos[1]);
         ctx.fileStyle = "none";
         //drawSvgPathOnCanvas(ctx, pp.getAttribute("d"));
@@ -805,16 +935,15 @@ async function addSvgPathToImage(svgUrl, data) {
   return ctx.getImageData(0, 0, canvas.width, canvas.height);
 }
 
-
 function getCenterOfPath(path) {
   let x = 0;
   let y = 0;
   const length = path.getTotalLength();
-  const count = 10;//Math.round(length);
-  for(let i = 0; i < count; i++) {
-    let p = path.getPointAtLength(i / count * length);
-    x += p.x/count;
-    y += p.y/count;
+  const count = 10; //Math.round(length);
+  for (let i = 0; i < count; i++) {
+    let p = path.getPointAtLength((i / count) * length);
+    x += p.x / count;
+    y += p.y / count;
   }
-  return [x, y]
+  return [x, y];
 }

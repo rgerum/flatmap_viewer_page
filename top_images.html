@@ -143,19 +143,25 @@
             <div id="mode" class="check_list_rows"></div>
           </div>
         </div>
-      <div class="flex-row" style="position: relative">
-        <div id="plot3dContainer" class="round-corner grow"></div>
+        <div class="control_box">
+          <span class="control_box_title"><span>Subject</span></span>
+          <div class="control_box_content">
+            <div id="subject" class="check_list_subjects"></div>
+          </div>
+        </div>
+        <div class="flex-row" style="position: relative">
+          <div id="plot3dContainer" class="round-corner grow"></div>
 
-        <div id="selected_images" class="round-corner"></div>
-      </div>
+          <div id="selected_images" class="round-corner"></div>
+        </div>
 
-      <div id="componentExamples"></div>
+        <div id="componentExamples"></div>
+      </form>
     </div>
 
     <script type="module">
       import { initScene, add_brain } from "./js/3D_view.mjs";
       import { getPngData } from "./js/numpy_to_js.mjs";
-      import { voxels_to_flatmap } from "./js/2D_view.mjs";
       import { cachedLoadNpy } from "./js/numpy_to_js.mjs";
 
       import { add_image, create_row } from "./js/dom_methods.mjs";
@@ -169,27 +175,54 @@
       });
       scene.initialized = true;
 
-      let brain_3d = await add_brain({
-        scene,
-        pt_flat: "static_data/pt_flat.npy",
-        faces_flat: "static_data/vtx_flat.npy",
-        pt_inflated: "static_data/pt_inflated.npy",
-        faces_inflated: "static_data/vtx.npy",
-        pt_pia: "static_data/pt_pia.npy",
-        pt_wm: "static_data/pt_wm.npy",
-      });
+      let last_subject = 0;
+      let brains = {};
+      async function set_subject(subject) {
+        console.log("set_subject", subject);
+        if (last_subject == subject) return;
+        if(brain_3d) {
+            brain_3d.set_inactive()
+        }
+        last_subject = subject;
+        if (!brains[subject]) {
+          let params = {
+            scene,
+            pt_flat: `static_data/${subject}/pt_flat.npy`,
+            faces_flat: `static_data/${subject}/faces_flat.npy`,
+            pt_inflated: `static_data/${subject}/pt_inflated.npy`,
+            faces_inflated: `static_data/${subject}/faces.npy`,
+            pt_pia: `static_data/${subject}/pt_pia.npy`,
+            pt_wm: `static_data/${subject}/pt_wm.npy`,
+            curvature_path: `static_data/${subject}/curvature.npy`,
+            mapping_path: `static_data/${subject}/mapping_map.npy`,
+            overlays_path: `static_data/${subject}/overlays-version1.svg`,
+            counts: `static_data/${subject}/counts.json`,
+          };
+          brains[subject] = await add_brain(params);
+        }
+        brain_3d = brains[subject];
+        brain_3d.set_active();
+        window.brain_3d = brain_3d;
+      }
+
+      let brain_3d = null;
+      await set_subject("fsaverage");
 
       window.brain_3d = brain_3d;
-      
+
       let surface_image_file = null;
       let top_images_file = null;
       let top_images_data = null;
       let selection_changed_event = null;
 
-      async function set_file_paths(mode) {
+
+      async function set_file_paths(mode, subject) {
         if (mode == "Vertex Averaged Concepts") {
           surface_image_file = "static_data/tsne__fsaverage.png";
-          top_images_file = "static_data/vertex_concept_averages/M_fsavg_top_images.npy";
+          if(subject !== "fsaverage")
+            top_images_file = `static_data/vertex_concept_averages/M_fsavg_top_images__${subject}.npy`;
+          else
+            top_images_file = "static_data/vertex_concept_averages/M_fsavg_top_images.npy";
         }
         else if (mode == "Betas") {
           surface_image_file = "static_data/betas_average.png";
@@ -203,15 +236,17 @@
           surface_image_file = "static_data/linear_decoding__tsne__fsaverage.png"
           top_images_file = 'static_data/vertex_concept_averages/linear_decoding__fsavg__top_images.npy';
         }
-        
+
       }
-      set_file_paths("Vertex Averaged Concepts");
+      set_file_paths("Vertex Averaged Concepts", last_subject);
 
       async function update_plot() {
         const form = document.getElementById("plotForm");
         const formData = new URLSearchParams(new FormData(form));
         const mode = formData.get("mode");
-        set_file_paths(mode);
+        const subject = formData.get("subject") || last_subject;
+        await set_subject(subject);
+        set_file_paths(mode, subject);
         //brain_3d.set_texture(await getPngData(surface_image_file));
 
         top_images_data = await cachedLoadNpy(top_images_file,);
@@ -224,7 +259,7 @@
       document.update_plot = update_plot;
       window.update_plot = update_plot;
 
-      function add_check_box(
+function add_check_box(
           placeholder,
           name,
           index,
@@ -266,6 +301,19 @@
         checkbox.checked = i == 0;
       }
 
+      let placeholder3b = document.getElementById("subject");
+      for (let i = 0; i < 9; i++) {
+        let checkbox = add_check_box(
+          placeholder3b,
+          "subject",
+          i == 0 ? "fsaverage" : `subj0${i}`, // i,
+          undefined,
+          true,
+          true,
+        );
+        checkbox.checked = i == 0;
+      }
+
       window.addEventListener("voxel_selected_changed", async function (e) {
         await brain_3d.set_voxel_selected(e.detail);
       });
@@ -293,6 +341,7 @@
       }
 
       async function image_map() {
+        if (!top_images_data) return console.error("top_images_data not loaded");
         let elem = document.getElementById("selected_images");
         elem.innerHTML = "";
         for (let image_id of url_obj.selected_images) {
@@ -329,7 +378,7 @@
         }
         // convert voxel data to texture
         brain_3d.set_texture(
-          await voxels_to_flatmap(
+          await brain_3d.voxels_to_flatmap(
             voxel_image_count,
             url_obj.selected_images.length + 1,
           ),
@@ -339,6 +388,7 @@
       if (url_obj.selected_images.length) image_map();
 
       async function update_images(e) {
+        if(!top_images_data) return console.error("top_images_data not loaded");
         // when a voxel has been clicked show the images
 
         function add_row(parent, component_id) {
@@ -385,7 +435,7 @@
         selection_changed_event = e;
         update_images(e);
       });
-      
+
 
     </script>
   </body>

@@ -8,7 +8,7 @@ export async function loadNpy(url) {
     .map((byte) => String.fromCharCode(byte))
     .join("");
   if (magic !== "\x93NUMPY") {
-    throw new Error("Not a .npy file");
+    throw new Error(`Not a .npy file filename: ${url}`);
   }
 
   // Parse header
@@ -132,4 +132,22 @@ export async function cachedLoadNpy(url) {
   const data = await loadNpy(url);
   cached[url] = data;
   return data;
+}
+
+
+export async function loadAllPromises(promises) {
+  let result = {};
+  let promise_list = [];
+  for(let key in promises) {
+    let current_key = key;
+    function  set(data) {
+      console.log("loaded", current_key);
+      result[current_key] = data;
+    }
+    promises[key].then(set);//data => result[current_key] = data
+    promise_list.push(promises[key]);
+  }
+  await Promise.all(promise_list);
+  console.log("loaded", result);
+  return result;
 }
