@@ -184,29 +184,40 @@
       let surface_image_file = null;
       let top_images_file = null;
       let top_images_data = null;
+      let selection_changed_event = null;
 
-      function set_file_paths(mode) {
+      async function set_file_paths(mode) {
         if (mode == "Vertex Averaged Concepts") {
           surface_image_file = "static_data/tsne__fsaverage.png";
-          top_images_file = "static_data/vertex_concept_averages/M_fsavg_top_images.npy"
+          top_images_file = "static_data/vertex_concept_averages/M_fsavg_top_images.npy";
         }
         else if (mode == "Betas") {
           surface_image_file = "static_data/betas_average.png";
-          top_images_file = "static_data/vertex_concept_averages/betas__top_images__fsavg.npy"
+          top_images_file = "static_data/vertex_concept_averages/betas__top_images__fsavg.npy";
+        }
+        else if (mode == "Linear Encoder") {
+          surface_image_file = "static_data/linear_encoding__tsne__fsaverage.png"
+          top_images_file = 'static_data/vertex_concept_averages/linear_encoding__fsavg__top_images.npy';
+        }
+        else if (mode == "Linear Decoder") {
+          surface_image_file = "static_data/linear_decoding__tsne__fsaverage.png"
+          top_images_file = 'static_data/vertex_concept_averages/linear_decoding__fsavg__top_images.npy';
         }
         
       }
-      set_file_paths("Vertex Averaged Concepts")
+      set_file_paths("Vertex Averaged Concepts");
 
       async function update_plot() {
         const form = document.getElementById("plotForm");
         const formData = new URLSearchParams(new FormData(form));
         const mode = formData.get("mode");
         set_file_paths(mode);
-        brain_3d.set_texture(await getPngData(surface_image_file));
+        //brain_3d.set_texture(await getPngData(surface_image_file));
 
         top_images_data = await cachedLoadNpy(top_images_file,);
-  
+        await image_map();
+        if (selection_changed_event !== null)
+          await update_images(selection_changed_event);
       }
       update_plot();
 
@@ -243,11 +254,11 @@
       }
 
       let placeholder3 = document.getElementById("mode");
-      for (let i of [0, 1]) {
+      for (let i of [0, 1, 2, 3]) {
         let checkbox = add_check_box(
           placeholder3,
           "mode",
-          ["Vertex Averaged Concepts", "Betas"][i],
+          ["Vertex Averaged Concepts", "Betas", "Linear Encoder", "Linear Decoder"][i],
           undefined,
           true,
           true,
@@ -327,7 +338,7 @@
       }
       if (url_obj.selected_images.length) image_map();
 
-      window.addEventListener("voxel_selected_changed", async function (e) {
+      async function update_images(e) {
         // when a voxel has been clicked show the images
 
         function add_row(parent, component_id) {
@@ -368,7 +379,14 @@
         for (let i = 0; i < 5; i++) {
           add_row(element_examples, i);
         }
+      }
+
+      window.addEventListener("voxel_selected_changed", async function (e) {
+        selection_changed_event = e;
+        update_images(e);
       });
+      
+
     </script>
   </body>
 </html>
