@@ -218,11 +218,14 @@
 
       async function set_file_paths(mode, subject) {
         if (mode == "Vertex Averaged Concepts") {
-          surface_image_file = "static_data/tsne__fsaverage.png";
-          if(subject !== "fsaverage")
+          if(subject !== "fsaverage") {
+            surface_image_file = `static_data/vertex_concept_averages/tsne__${subject}.png`;
             top_images_file = `static_data/vertex_concept_averages/M_fssubject_binary_top_images__${subject}.npy`;
-          else
+          }
+          else {
+            surface_image_file = "static_data/tsne__fsaverage.png";
             top_images_file = "static_data/vertex_concept_averages/M_fsavg_top_images.npy";
+          }
         }
         else if (mode == "Betas") {
           surface_image_file = "static_data/betas_average.png";
