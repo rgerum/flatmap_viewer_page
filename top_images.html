@@ -140,13 +140,19 @@
         <div class="control_box">
           <span class="control_box_title"><span>Mode</span></span>
           <div class="control_box_content">
-            <div id="mode" class="check_list_rows"></div>
+            <div id="mode" class="check_list_mode"></div>
           </div>
         </div>
         <div class="control_box">
           <span class="control_box_title"><span>Subject</span></span>
           <div class="control_box_content">
             <div id="subject" class="check_list_subjects"></div>
+          </div>
+        </div>
+        <div class="control_box">
+          <span class="control_box_title"><span>Concept Similarity Metric</span></span>
+          <div class="control_box_content">
+            <div id="concept_similarity_metric" class="check_list_concept_similarity_metric"></div>
           </div>
         </div>
         <div class="flex-row" style="position: relative">
@@ -214,32 +220,43 @@
       let top_images_file = null;
       let top_images_data = null;
       let selection_changed_event = null;
+      let W_file = null;
+      let W = null;
+      let W_mask_file = null;
+      let W_mask = null;
+      let Y_file = null;
+      let Y = null;
+      let stimulus_ids_file = null;
+      let stimulus_ids = null;
 
       async function set_file_paths(mode, subject) {
-        if (mode == "Vertex Averaged Concepts") {
-          if (subject !== "fsaverage") {
-            surface_image_file = `static_data/vertex_concept_averages/tsne__${subject}.png`;
-            top_images_file = `static_data/vertex_concept_averages/M_fssubject_binary_top_images__${subject}.npy`;
-          } else {
-            surface_image_file = "static_data/tsne__fsaverage.png";
-            top_images_file =
-              "static_data/vertex_concept_averages/M_fsavg_top_images.npy";
-          }
-        } else if (mode == "Betas") {
-          surface_image_file = "static_data/betas_average.png";
-          top_images_file =
-            "static_data/vertex_concept_averages/betas__top_images__fsavg.npy";
-        } else if (mode == "Linear Encoder") {
-          surface_image_file =
-            "static_data/linear_encoding__tsne__fsaverage.png";
-          top_images_file =
-            "static_data/vertex_concept_averages/linear_encoding__fsavg__top_images.npy";
-        } else if (mode == "Linear Decoder") {
-          surface_image_file =
-            "static_data/linear_decoding__tsne__fsaverage.png";
-          top_images_file =
-            "static_data/vertex_concept_averages/linear_decoding__fsavg__top_images.npy";
+        
+        console.log(mode, subject);
+        let suffix = "";
+        let space = "fsavg";
+        if (subject !== "fsaverage") {
+          suffix = `__${subject}`;
+          space = "fssubject";
         }
+
+        let tags = {
+          "Vertex Averaged Concepts": "concept_averages",
+          "Betas": "betas",
+          "Linear Encoder": 'linear_encoding',
+          "Linear Decoder (group-19)": "linear_decoding__group-19",
+          "Linear Decoder (group-21)": "linear_decoding__group-21",
+          "Linear Decoder SDC (group-21)": "linear_decoding_sdc__group-21"
+        };
+        let tag = tags[mode];
+
+        // Naming convention for all files is {tag}__{space}__{file_name}__{subject_name}.ext
+        // __{subject_name} is not included for the cross subject average
+        surface_image_file = `static_data/top_images/${tag}__${space}__overlay${suffix}.png`;
+        top_images_file = `static_data/top_images/${tag}__${space}__top_images${suffix}.npy`;
+        W_file = `static_data/top_images/${tag}__${space}__W${suffix}.npy`;
+        W_mask_file = `static_data/top_images/${tag}__${space}__W_mask${suffix}.npy`;
+        Y_file = `static_data/top_images/${tag}__${space}__Y${suffix}.npy`;
+        stimulus_ids_file = `static_data/top_images/${tag}__${space}__stimulus_ids${suffix}.npy`;
       }
       set_file_paths("Vertex Averaged Concepts", last_subject);
 
@@ -258,7 +275,6 @@
           await update_images(selection_changed_event);
         scene.onWindowResize();
       }
-      update_plot();
 
       document.update_plot = update_plot;
       window.update_plot = update_plot;
@@ -286,21 +302,24 @@
       }
 
       let placeholder3 = document.getElementById("mode");
-      for (let i of [0, 1, 2, 3]) {
+      let modes = [
+        "Vertex Averaged Concepts",
+        "Betas",
+        "Linear Encoder",
+        "Linear Decoder (group-19)",
+        "Linear Decoder (group-21)",
+        "Linear Decoder SDC (group-21)",
+      ]
+      for (let i = 0; i < modes.length; i++) {
         let checkbox = add_check_box(
           placeholder3,
           "mode",
-          [
-            "Vertex Averaged Concepts",
-            "Betas",
-            "Linear Encoder",
-            "Linear Decoder",
-          ][i],
+          modes[i],
           undefined,
           true,
           true,
         );
-        checkbox.checked = i == 0;
+        checkbox.checked = (i == 0);
       }
 
       let placeholder3b = document.getElementById("subject");
@@ -315,6 +334,23 @@
         );
         checkbox.checked = i == 0;
       }
+
+      let concept_similarity_metrics = [
+        "Top Image Check", "Cosine Similarity"
+      ]
+      let placeholder3c = document.getElementById("concept_similarity_metric");
+      for (let i = 0; i < concept_similarity_metrics.length; i++) {
+        let checkbox = add_check_box(
+          placeholder3c,
+          "concept_similarity_metric",
+          concept_similarity_metrics[i], 
+          undefined,
+          true,
+          true,
+        );
+        checkbox.checked = i == 0;
+      }
+      update_plot();
 
       window.addEventListener("voxel_selected_changed", async function (e) {
         await brain_3d.set_voxel_selected(e.detail);
