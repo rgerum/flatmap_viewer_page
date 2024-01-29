@@ -222,7 +222,7 @@
       }
 
       let brain_3d = null;
-      await set_subject("average");
+      await set_subject("subj01");
 
       window.brain_3d = brain_3d;
 
@@ -230,8 +230,8 @@
       let top_images_data = null;
       let selection_changed_event = null;
       let W = null;
-      let W_mask = null;
-      let mask_ids_map = null;
+      let voxel_ids = null;
+      let voxel_ids_map = null;
 
       let Y = null;
       let stimulus_ids = null;
@@ -262,39 +262,40 @@
         let tag = tags[mode];
 
         let file_path = (items, ext,) => {
-          return `static_data/top_images/${tag}/${items.join('__')}.${ext}`
+          return `static_data/top_images_voxel/${tag}/${items.join('__')}.${ext}`
         }
 
-        surface_image = await getPngData(file_path([tag, space, "tsne", subject, layer], "png",));
-        top_images_data = await loadNpy(file_path([tag, space, "top_images", subject, layer], "npy"));
-        W_mask = await loadNpy(file_path([tag, space, "W_mask", subject, layer], "npy"));
-        mask_ids_map = {};
-        let mask_id = 0;
-        for (let vertex_id = 0; vertex_id < W_mask.data.length; vertex_id++) {
-          if (W_mask.data[vertex_id]) {
-            mask_ids_map[vertex_id] = mask_id;
-            mask_id += 1;
+        voxel_ids = await loadNpy(`static_data/top_images_voxel/voxel_ids__${space}__${subject}__${layer}.npy`)
+        voxel_ids_map = {};
+        
+        for (let vertex_id = 0; vertex_id < voxel_ids.data.length; vertex_id++) {
+          if (voxel_ids.data[vertex_id] != -1) {
+            voxel_ids_map[vertex_id] = voxel_ids.data[vertex_id];
           }
         }
+        console.log(voxel_ids_map)
+
+        surface_image = await getPngData(file_path([tag, space, "tsne", subject, layer], "png",));
+        top_images_data = await loadNpy(file_path([tag, "top_images", subject,], "npy"));        
 
         if (concept_similarity_metric === "Cosine Similarity") {
           
-          W = [];
-          for (let i = 0; i < 5; i++) {
-            W.push(await loadNpy(file_path([tag, space, "W", subject, layer, String(i + 1)], "npy")));
-          }
-          W = concatNumpy(W);
-          //W = await loadNpy(file_path("W", "npy", [layer]));
+          //W = [];
+          //for (let i = 0; i < 5; i++) {
+          //  W.push(await loadNpy(file_path([tag, space, "W", subject, layer, String(i + 1)], "npy")));
+          //}
+          //W = concatNumpy(W);
+          W = await loadNpy(file_path([tag, "W", subject], "npy"));
           
-          Y = await loadNpy(file_path([tag, "fsavg", "Y", "average"], "npy"));
-          stimulus_ids = await loadNpy(file_path([tag, "fsavg", "stimulus_ids", "average"], "npy"));
+          Y = await loadNpy(file_path([tag, "Y"], "npy"));
+          stimulus_ids = await loadNpy(file_path([tag, "stimulus_ids"], "npy"));
           stimulus_ids_map = {}
           for (const [index, element] of stimulus_ids.data.entries()) {
             stimulus_ids_map[element] = index;
           }
         }
       }
-      load_data("Vertex Averaged Concepts", last_subject);
+      load_data("Linear Encoder", last_subject, "pial", "fsaverage");
 
       async function update_plot() {
         const form = document.getElementById("plotForm");
@@ -368,11 +369,12 @@
       }
 
       let placeholder3b = document.getElementById("subject");
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 8; i++) {
         let checkbox = add_check_box(
           placeholder3b,
           "subject",
-          i == 0 ? "average" : `subj0${i}`, // i,
+          //i == 0 ? "average" : `subj0${i}`, // i,
+          `subj0${i + 1}`,
           undefined,
           true,
           true,
@@ -470,7 +472,7 @@
 
         const num_voxels = top_images_data.shape[0];
         
-        const num_vertices = W_mask.shape[0];
+        const num_vertices = voxel_ids.shape[0];
         const num_mask_vertices = top_images_data.shape[0];
 
         let voxel_image_count = new Int32Array(num_vertices);
@@ -483,18 +485,18 @@
             return;
           }
           // iterate over voxels
-          for (let vertex_id in mask_ids_map) {
-            let mask_id = mask_ids_map[vertex_id];
+          for (let vertex_id in voxel_ids_map) {
+            let voxel_id = voxel_ids_map[vertex_id];
 
             voxel_image_count[vertex_id] = 0;
-            let list = top_images_data.data[mask_id * top_images_data.shape[1]];
+            let list = top_images_data.data[voxel_id * top_images_data.shape[1]];
 
             let found = 0;
             for (let image_id of url_obj.selected_images) {
               // find the image id
               for (let j = 0; j < top_images_data.shape[1]; j++) {
                 // if found set the voxel data as the index of the image in the list
-                if (top_images_data.data[mask_id * top_images_data.shape[1] + j] === image_id) {
+                if (top_images_data.data[voxel_id * top_images_data.shape[1] + j] === image_id) {
                   found += 1;
                   break;
                 }
@@ -511,9 +513,9 @@
           let Y_selected_mean = new Float32Array(embedding_size);
           if (url_obj.selected_images.length == 0) {
 
-            let mask_id = mask_ids_map[selection_changed_event.detail.voxel];
+            let voxel_id = voxel_ids_map[selection_changed_event.detail.voxel];
             for (let k = 0; k < embedding_size; k++) {
-              Y_selected_mean[k] = W.data[embedding_size * mask_id + k]
+              Y_selected_mean[k] = W.data[embedding_size * voxel_id + k]
             }
 
           } else {
@@ -529,12 +531,12 @@
           
 
           let max_val = 0;
-          for (let vertex_id in mask_ids_map) {
-            let mask_id = mask_ids_map[vertex_id];
+          for (let vertex_id in voxel_ids_map) {
+            let voxel_id = voxel_ids_map[vertex_id];
 
             let w_dot_Y = 0.;
             for (let k = 0; k < embedding_size; k++) {
-              w_dot_Y += Y_selected_mean[k] * W.data[embedding_size * mask_id + k]
+              w_dot_Y += Y_selected_mean[k] * W.data[embedding_size * voxel_id + k]
             }
             w_dot_Y = Math.max(Math.round(w_dot_Y * cmap_scale), 0.);
             if (w_dot_Y > max_val)
@@ -571,9 +573,9 @@
 
           // add the images and add an onclick function
           for (let i = 0; i < 10; i++) {
-            let mask_id = mask_ids_map[e.detail.voxel];
+            let voxel_id = voxel_ids_map[e.detail.voxel];
             let offset = component_id * 10 + i
-            let im_id = top_images_data.data[mask_id * top_images_data.shape[1] + offset];
+            let im_id = top_images_data.data[voxel_id * top_images_data.shape[1] + offset];
             let img = add_image(row, `static_data/new_examples/${im_id}.jpg`);
             img.onclick = function () {
               if (!url_obj.selected_images.includes(im_id)) {
