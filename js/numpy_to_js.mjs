@@ -40,6 +40,31 @@ export async function loadNpy(url) {
   };
 }
 
+export function concatNumpy(arrays) {
+  let dtype = arrays[0].dtype;
+  let shape = [...arrays[0].shape]
+  for (let i = 1; i < arrays.length; i++) {
+    shape[0] += arrays[i].shape[0];
+  }
+    
+  let datas = arrays.map((array) => array.data);
+  let new_length = 0;
+  for (let data of datas)
+    new_length += data.length;
+  let new_data = new datas[0].constructor(new_length);
+
+  let pointer = 0;
+  for (let data of datas) {
+    new_data.set(data, pointer);
+    pointer += data.length;
+  }
+  return {
+    dtype: dtype,
+    shape: shape,
+    data: new_data,
+  };
+}
+
 export async function getPngData(url) {
   return new Promise((resolve, reject) => {
     // Create an image element
