@@ -138,9 +138,9 @@
       <form id="plotForm" class="controls">
         <input type="hidden" name="show_groups" value="0" />
         <div class="control_box">
-          <span class="control_box_title"><span>Mode</span></span>
+          <span class="control_box_title"><span>Model</span></span>
           <div class="control_box_content">
-            <div id="mode" class="check_list_mode"></div>
+            <div id="model" class="check_list_model"></div>
           </div>
         </div>
         <div class="control_box">
@@ -162,9 +162,9 @@
           </div>
         </div>
         <div class="control_box">
-          <span class="control_box_title"><span>Concept Similarity Metric</span></span>
+          <span class="control_box_title"><span>Mode</span></span>
           <div class="control_box_content">
-            <div id="concept_similarity_metric" class="check_list_concept_similarity_metric"></div>
+            <div id="mode" class="check_list_mode"></div>
           </div>
         </div>
         <div class="flex-row" style="position: relative">
@@ -190,16 +190,133 @@
         dom_elem: document.getElementById("plot3dContainer"),
       });
       scene.initialized = true;
+      
+      let models = {
+        "Linear Decoder Reruns (group-22)": "linear_decoding__group-22_reruns-2",
+        "Linear Decoder (group-22)": "linear_decoding__group-22",
+        "Linear Encoder": 'linear_encoding_large',
+      };
+      
+      let subjects = [];
+      let subject_options = ["average"];
+      for (let subject_id = 0; subject_id < 8; subject_id++) {
+        let subject = `subj0${subject_id + 1}`;
+        subjects.push(subject);
+        subject_options.push(subject);
+      }
 
-      let last_subject = 0;
+      let spaces = {
+        "fsaverage": 'fsavg',
+        "native surface": 'fssubject',
+      };
+
+      let layers = ["pial", "layerB1", "layerB2", "layerB3", "white",];
+      let modes = ["Top Image Check", "Cosine Similarity"];
+
+      let selected_model = Object.keys(models)[0];
+      let selected_subject = subject_options[0];
+      let selected_layer = layers[0];
+      let selected_space = Object.keys(spaces)[0];
+      let selected_mode = modes[0];
+    
+      let W_all = null;
+      let voxel_ids_all = null;
+      let voxel_ids_map_all = null;
+      let Y = null;
+      let stimulus_ids = null;
+      let stimulus_ids_map = null;
+      let previous_model = '';
+
+      let file_path = (tag, items, ext,) => {
+        return `static_data/top_images_voxel/${tag}/${items.join('__')}.${ext}`
+      }
+
+      async function set_model() {
+        console.log("set_model", selected_model);
+
+        if (selected_model == previous_model) {
+          return;
+        }
+        previous_model = selected_model;
+        
+        let tag = models[selected_model];
+        
+        W_all = {};
+        voxel_ids_map_all = {};
+        voxel_ids_all = {};
+
+        Y = await loadNpy(file_path(tag, [tag, "Y"], "npy"));
+        stimulus_ids = await loadNpy(file_path(tag, [tag, "stimulus_ids"], "npy"));
+        stimulus_ids_map = {}
+        for (const [index, element] of stimulus_ids.data.entries()) {
+          stimulus_ids_map[element] = index;
+        }
+
+        for (let subject of subjects) {
+          W_all[subject] = await loadNpy(file_path(tag, [tag, "W", subject], "npy"));
+
+          voxel_ids_map_all[subject] = {};
+          voxel_ids_all[subject] = {};
+      
+          for (let space of Object.values(spaces)) {
+            voxel_ids_map_all[subject][space] = {};
+            voxel_ids_all[subject][space] = {};
+
+            for (let layer of Object.values(layers)) {
+              let voxel_ids = await loadNpy(`static_data/top_images_voxel/voxel_ids__${space}__${subject}__${layer}.npy`);
+              voxel_ids_all[subject][space][layer] = voxel_ids;
+
+              let voxel_ids_map = {};
+              for (let vertex_id = 0; vertex_id < voxel_ids.data.length; vertex_id++) {
+              if (voxel_ids.data[vertex_id] != -1) {
+                  voxel_ids_map[vertex_id] = voxel_ids.data[vertex_id];
+                }
+              }
+              voxel_ids_map_all[subject][space][layer] = voxel_ids_map;
+            }
+          }
+        }
+      }
+      
+      let surface_image = null;
+      let top_images_data = null;
+      let W = null;
+      let voxel_ids = null;
+      let voxel_ids_map = null;
+
+      async function load_data() {
+        console.log('load_data', selected_model, selected_subject, selected_layer, selected_space);
+
+        let space = spaces[selected_space];
+        let tag = models[selected_model];
+
+        surface_image = await getPngData(file_path(tag, [tag, space, "tsne", selected_subject, selected_layer], "png",));
+        
+        if (selected_subject === "average") {
+          W = subjects.map((subject) => W_all[subject]);
+          voxel_ids = subjects.map((subject) => voxel_ids_all[subject][space][selected_layer]);
+          voxel_ids_map = subjects.map((subject) => voxel_ids_map_all[subject][space][selected_layer]);
+        }
+        else {
+          W = W_all[selected_subject];
+          voxel_ids = voxel_ids_all[selected_subject][space][selected_layer];
+          voxel_ids_map = voxel_ids_map_all[selected_subject][space][selected_layer];
+          top_images_data = await loadNpy(file_path(tag, [tag, "top_images", selected_subject,], "npy"));
+        }
+        
+      }
+
       let brains = {};
+      let previous_subject = null;
+      let brain_3d = null;
       async function set_subject(subject) {
         console.log("set_subject", subject);
-        if (last_subject == subject) return;
+        if (previous_subject == subject) 
+          return;
+        previous_subject = subject;
         if (brain_3d) {
           brain_3d.set_inactive();
         }
-        last_subject = subject;
         if (!brains[subject]) {
           let params = {
             scene,
@@ -219,102 +336,36 @@
         brain_3d = brains[subject];
         brain_3d.set_active();
         window.brain_3d = brain_3d;
+        console.log('brain_3d', brain_3d)
       }
-
-      let brain_3d = null;
-      await set_subject("subj01");
-
-      window.brain_3d = brain_3d;
-
-      let surface_image = null;
-      let top_images_data = null;
-      let selection_changed_event = null;
-      let W = null;
-      let voxel_ids = null;
-      let voxel_ids_map = null;
-
-      let Y = null;
-      let stimulus_ids = null;
-      let stimulus_ids_map = null;
       
-      let concept_similarity_metric = "Top Image Check";
 
-      async function load_data(mode, subject, layer, space) {
-        console.log(mode, subject, layer, space);
+      //await set_subject("subj01");
+      //set_model(selected_model);
+      //load_data(selected_model, selected_subject, selected_layer, selected_space);
 
-
-        let spaces = {
-          "fsaverage": 'fsavg',
-          "native surface": 'fssubject',
-        };
-        space = spaces[space];
-
-        let tags = {
-          //"Vertex Averaged Concepts": "concept_averages",
-          //"Betas": "betas",
-          "Linear Encoder": 'linear_encoding_large',
-          //"Linear Decoder (group-19)": "linear_decoding__group-19",
-          //"Linear Decoder (group-21)": "linear_decoding__group-21",
-          //"Linear Decoder SDC (group-21)": "linear_decoding_sdc__group-21",
-          "Linear Decoder (group-22)": "linear_decoding__group-22",
-          //"Linear Decoder SDC (group-22)": "linear_decoding_sdc__group-22"
-        };
-        let tag = tags[mode];
-
-        let file_path = (items, ext,) => {
-          return `static_data/top_images_voxel/${tag}/${items.join('__')}.${ext}`
-        }
-
-        voxel_ids = await loadNpy(`static_data/top_images_voxel/voxel_ids__${space}__${subject}__${layer}.npy`)
-        voxel_ids_map = {};
-        
-        for (let vertex_id = 0; vertex_id < voxel_ids.data.length; vertex_id++) {
-          if (voxel_ids.data[vertex_id] != -1) {
-            voxel_ids_map[vertex_id] = voxel_ids.data[vertex_id];
-          }
-        }
-        console.log(voxel_ids_map)
-
-        surface_image = await getPngData(file_path([tag, space, "tsne", subject, layer], "png",));
-        top_images_data = await loadNpy(file_path([tag, "top_images", subject,], "npy"));        
-
-        if (concept_similarity_metric === "Cosine Similarity") {
-          
-          //W = [];
-          //for (let i = 0; i < 5; i++) {
-          //  W.push(await loadNpy(file_path([tag, space, "W", subject, layer, String(i + 1)], "npy")));
-          //}
-          //W = concatNumpy(W);
-          W = await loadNpy(file_path([tag, "W", subject], "npy"));
-          
-          Y = await loadNpy(file_path([tag, "Y"], "npy"));
-          stimulus_ids = await loadNpy(file_path([tag, "stimulus_ids"], "npy"));
-          stimulus_ids_map = {}
-          for (const [index, element] of stimulus_ids.data.entries()) {
-            stimulus_ids_map[element] = index;
-          }
-        }
-      }
-      load_data("Linear Encoder", last_subject, "pial", "fsaverage");
-
+      let selection_changed_event = null;
       async function update_plot() {
         const form = document.getElementById("plotForm");
         const formData = new URLSearchParams(new FormData(form));
-        const mode = formData.get("mode");
-        const subject = formData.get("subject") || last_subject;
-        concept_similarity_metric = formData.get("concept_similarity_metric");
-        const layer = formData.get("layer");
-        const space = formData.get("space");
-        if (space === 'fsaverage') {
+
+        selected_model = formData.get("model");
+        selected_subject = formData.get("subject") || last_subject;
+        selected_layer = formData.get("layer");
+        selected_space = formData.get("space");
+        selected_mode = formData.get("mode");
+
+        if (selected_space === 'fsaverage') {
           await set_subject('average');
-        } else if (space == 'native surface') {
-          await set_subject(subject);
+        } else if (selected_space == 'native surface') {
+          await set_subject(selected_subject);
         }
         
-        await load_data(mode, subject, layer, space);
+        await set_model(selected_model);
+        await load_data(selected_model, selected_subject, selected_layer, selected_space);
         //brain_3d.set_texture(surface_image);
-
         await image_map();
+
         if (selection_changed_event !== null)
           await update_images(selection_changed_event);
         scene.onWindowResize();
@@ -323,113 +374,38 @@
       document.update_plot = update_plot;
       window.update_plot = update_plot;
 
-      function add_check_box(placeholder, name, index, index2, invert, radio) {
-        let label = document.createElement("label");
-        let text = document.createElement("span");
-        text.innerText = index2 || index;
-        let checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        if (radio) checkbox.type = "radio";
-        checkbox.name = name;
-        checkbox.value = index;
-        checkbox.oninput = update_plot;
-        label.title = index;
-        if (invert) {
-          label.appendChild(checkbox);
-          label.appendChild(text);
-        } else {
-          label.appendChild(text);
-          label.appendChild(checkbox);
+      function add_check_box(name, values, index2=undefined, invert=true, radio=true) {
+        let placeholder = document.getElementById(name);
+
+        for (let [i, index] of values.entries()) {
+          let label = document.createElement("label");
+          let text = document.createElement("span");
+          text.innerText = index2 || index;
+          let checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          if (radio) checkbox.type = "radio";
+          checkbox.name = name;
+          checkbox.value = index;
+          checkbox.oninput = update_plot;
+          label.title = index;
+          if (invert) {
+            label.appendChild(checkbox);
+            label.appendChild(text);
+          } else {
+            label.appendChild(text);
+            label.appendChild(checkbox);
+          }
+          placeholder.appendChild(label);
+          checkbox.checked = (i == 0);
         }
-        placeholder.appendChild(label);
-        return checkbox;
+
       }
 
-      let placeholder3 = document.getElementById("mode");
-      let modes = [
-        //"Vertex Averaged Concepts",
-        //"Betas",
-        "Linear Encoder",
-        //"Linear Decoder (group-19)",
-        //"Linear Decoder (group-21)",
-        //"Linear Decoder SDC (group-21)",
-        "Linear Decoder (group-22)",
-        //"Linear Decoder SDC (group-22)",
-      ]
-      for (let i = 0; i < modes.length; i++) {
-        let checkbox = add_check_box(
-          placeholder3,
-          "mode",
-          modes[i],
-          undefined,
-          true,
-          true,
-        );
-        checkbox.checked = (i == 0);
-      }
-
-      let placeholder3b = document.getElementById("subject");
-      for (let i = 0; i < 8; i++) {
-        let checkbox = add_check_box(
-          placeholder3b,
-          "subject",
-          //i == 0 ? "average" : `subj0${i}`, // i,
-          `subj0${i + 1}`,
-          undefined,
-          true,
-          true,
-        );
-        checkbox.checked = i == 0;
-      }
-
-      let concept_similarity_metrics = [
-        "Top Image Check", "Cosine Similarity"
-      ]
-      let placeholder3c = document.getElementById("concept_similarity_metric");
-      for (let i = 0; i < concept_similarity_metrics.length; i++) {
-        let checkbox = add_check_box(
-          placeholder3c,
-          "concept_similarity_metric",
-          concept_similarity_metrics[i], 
-          undefined,
-          true,
-          true,
-        );
-        checkbox.checked = i == 0;
-      }
-
-      let layers = [
-        "pial", "layerB1", "layerB2", "layerB3", "white",
-      ]
-      let placeholder3d = document.getElementById("layer");
-      for (let i = 0; i < layers.length; i++) {
-        let checkbox = add_check_box(
-          placeholder3d,
-          "layer",
-          layers[i], 
-          undefined,
-          true,
-          true,
-        );
-        checkbox.checked = i == 0;
-      }
-
-      let spaces = [
-        "fsaverage", "native surface",
-      ]
-      let placeholder3e = document.getElementById("space");
-      for (let i = 0; i < spaces.length; i++) {
-        let checkbox = add_check_box(
-          placeholder3e,
-          "space",
-          spaces[i], 
-          undefined,
-          true,
-          true,
-        );
-        checkbox.checked = i == 0;
-      }
-
+      add_check_box("model", Object.keys(models));
+      add_check_box("subject", subject_options);
+      add_check_box("space", Object.keys(spaces));
+      add_check_box("layer", layers);
+      add_check_box("mode", modes);
       update_plot();
 
       window.addEventListener("voxel_selected_changed", async function (e) {
@@ -458,9 +434,40 @@
         await image_map();
       }
 
+      async function normalize(w) {
+        const w_norm = Math.sqrt(w.reduce((acc, val) => acc + val * val));
+        for (let i = 0; i < w.length; i++) {
+          w[i] /= w_norm;
+        }
+        return w;
+      }
+
+      async function get_vertex(w, vertex_id, embedding_size) {
+        if (selected_subject == 'average') {
+          
+          for (let subject_id = 0; subject_id < 8; subject_id++) {
+            if (vertex_id in voxel_ids_map[subject_id]) {
+              let voxel_id = voxel_ids_map[subject_id][vertex_id];
+              for (let k = 0; k < embedding_size; k++) {
+                  w[k] += W[subject_id].data[embedding_size * voxel_id + k];
+              }
+            }
+          }
+          w = normalize(w);
+        } 
+        
+        else {
+          if (vertex_id in voxel_ids_map) {
+            let voxel_id = voxel_ids_map[vertex_id];
+            for (let k = 0; k < embedding_size; k++) {
+                w[k] = W.data[embedding_size * voxel_id + k];
+            }
+          }
+        }
+        return w;
+      }
+
       async function image_map() {
-        if (!top_images_data)
-          return console.error("top_images_data not loaded");
         let elem = document.getElementById("selected_images");
         elem.innerHTML = "";
 
@@ -470,16 +477,24 @@
           im.className = "image-container image-container-minus";
         }
 
-        const num_voxels = top_images_data.shape[0];
-        
-        const num_vertices = voxel_ids.shape[0];
-        const num_mask_vertices = top_images_data.shape[0];
+        let num_voxels = null;
+        let num_vertices = null;
+        let embedding_size = null;
+        if (selected_subject == "average") {
+          num_voxels = W[0].shape[0];
+          embedding_size = W[0].shape[1];
+          num_vertices = voxel_ids[0].shape[0];
+        } else {
+          num_voxels = W.shape[0];
+          embedding_size = W.shape[1];
+          num_vertices = voxel_ids.shape[0];
+        }       
 
         let voxel_image_count = new Int32Array(num_vertices);
         voxel_image_count.fill(-1);
         let cmap_scale = url_obj.selected_images.length + 1;
 
-        if (concept_similarity_metric === "Top Image Check") {
+        if (selected_mode === "Top Image Check") {
           if (url_obj.selected_images.length == 0) {
             brain_3d.set_texture(surface_image);
             return;
@@ -505,19 +520,15 @@
             voxel_image_count[vertex_id] = found;
           }
         }
-        else if (concept_similarity_metric === "Cosine Similarity") {
+        else if (selected_mode === "Cosine Similarity") {
           // TODO: Implement floating point surface maps so scaling by 100 isnt necessary
           cmap_scale = 100;
-          const embedding_size = W.shape[1];
 
+          let vertex_id = selection_changed_event.detail.voxel;
           let Y_selected_mean = new Float32Array(embedding_size);
           if (url_obj.selected_images.length == 0) {
-
-            let voxel_id = voxel_ids_map[selection_changed_event.detail.voxel];
-            for (let k = 0; k < embedding_size; k++) {
-              Y_selected_mean[k] = W.data[embedding_size * voxel_id + k]
-            }
-
+            get_vertex(Y_selected_mean, vertex_id, embedding_size);
+            console.log(Y_selected_mean, vertex_id);
           } else {
             for (let image_id of url_obj.selected_images) {
               for (let j = 0; j < embedding_size; j++) {
@@ -531,12 +542,28 @@
           
 
           let max_val = 0;
-          for (let vertex_id in voxel_ids_map) {
-            let voxel_id = voxel_ids_map[vertex_id];
+          let w = new Float32Array(embedding_size);
+
+          let vertex_ids = null;
+          if (selected_subject === 'average') {
+            vertex_ids = new Set();
+            console.log(voxel_ids_map)
+            for (let i = 0; i < 8; i++) {
+              for (let elem of Object.keys(voxel_ids_map[i])) {
+                vertex_ids.add(elem);
+              }
+            }
+          } else {
+            vertex_ids = Object.keys(voxel_ids_map);
+          }
+          console.log(vertex_ids);
+          
+          for (let vertex_id of vertex_ids) {
+            get_vertex(w, vertex_id, embedding_size);
 
             let w_dot_Y = 0.;
             for (let k = 0; k < embedding_size; k++) {
-              w_dot_Y += Y_selected_mean[k] * W.data[embedding_size * voxel_id + k]
+              w_dot_Y += Y_selected_mean[k] * w[k];
             }
             w_dot_Y = Math.max(Math.round(w_dot_Y * cmap_scale), 0.);
             if (w_dot_Y > max_val)
@@ -560,9 +587,10 @@
         image_map();
 
       async function update_images(e) {
-        if (!top_images_data)
-          return console.error("top_images_data not loaded");
         // when a voxel has been clicked show the images
+
+        if (selected_subject == 'average')
+          return;
 
         function add_row(parent, component_id) {
           // add a row with a title for each 10 images
