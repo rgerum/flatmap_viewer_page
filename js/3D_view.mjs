@@ -783,6 +783,7 @@ export async function add_brain({
 
   return {
     mesh,
+    brain_data,
     set_mesh_colors,
     set_pivot,
     set_shape,
