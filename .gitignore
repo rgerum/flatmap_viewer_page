@@ -1,3 +1,5 @@
 .idea/
 static_data/top_images/*
 .vscode/settings.json
+atlas/*
+resized_images/*
