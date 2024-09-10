@@ -459,13 +459,26 @@ export const cmap = {
     0.118128, 0.964894, 0.902323, 0.123941, 0.974417, 0.90359, 0.130215,
     0.983868, 0.904867, 0.136897, 0.993248, 0.906157, 0.143936,
   ]),
+  subject: new Float32Array([
+    0.        , 0.        , 0.        ,
+    0.12156863, 0.46666667, 0.70588235, 
+    1.        , 0.49803922, 0.05490196, 
+    0.17254902, 0.62745098, 0.17254902, 
+    0.83921569, 0.15294118, 0.15686275, 
+    0.58039216, 0.40392157, 0.74117647,
+    0.89019608, 0.46666667, 0.76078431, 
+    0.7372549 , 0.74117647, 0.13333333, 
+    0.54901961, 0.3372549 , 0.29411765,
+    1.        , 1.        , 1.        ,
+  ])
 };
 
 export function get_cmap_uint32(name = "turbo", color_count = 9) {
   let my_cmap = cmap[name];
+  let num_cmap_colors = my_cmap.length / 3;
   let packedColor = new Uint32Array(color_count);
   for (let i = 0; i < color_count; i++) {
-    let c = parseInt((i * 255) / (color_count - 1));
+    let c = parseInt(i / color_count * num_cmap_colors);
     let color = [my_cmap[c * 3 + 0], my_cmap[c * 3 + 1], my_cmap[c * 3 + 2]];
     packedColor[i] =
       (255 << 24) |
@@ -482,9 +495,10 @@ function sRGBtoLinear(c) {
 
 export function get_cmap(name = "turbo", color_count = 9) {
   let my_cmap = cmap[name];
+  let num_cmap_colors = my_cmap.length / 3;
   let packedColor = new Float32Array(color_count * 3);
   for (let i = 0; i < color_count; i++) {
-    let c = parseInt((i * 255) / (color_count - 1));
+    let c = parseInt(i / color_count * num_cmap_colors);
     packedColor[i * 3 + 0] = sRGBtoLinear(my_cmap[c * 3 + 0]);
     packedColor[i * 3 + 1] = sRGBtoLinear(my_cmap[c * 3 + 1]);
     packedColor[i * 3 + 2] = sRGBtoLinear(my_cmap[c * 3 + 2]);
@@ -534,10 +548,10 @@ export function get_cmap_display(dom_element, name = "turbo", color_count = 9) {
   }
   let canvas = dom_element.querySelector("canvas");
   for (let i = 0; i < 5; i++) {
-    let element = dom_element
-      .getElementsByTagName("span")[i];
+    let element = dom_element.getElementsByTagName("span")[i];
     let ratio = parseInt((i / 4) * color_count);
-    if(ratio > color_count - 1) ratio = color_count - 1;
+    if (ratio > color_count - 1) 
+      ratio = color_count - 1;
     element.innerText = ratio;
     ratio += 0.5
     element.style.left = `${((ratio) / color_count) * 100}%`;
