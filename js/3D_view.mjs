@@ -616,11 +616,11 @@ export async function add_brain({
     last_data = [data, width, height];
     if (show_roi) {
       let foreground = await getPngData("static_data/foreground.png");
-      //data = overlayImagesUint8(data, foreground, width, height);
+      data = overlayImagesUint8(data, foreground, width, height);
 
       // Usage
       try {
-        //data = await addSvgPathToImage(mapping_path, data);
+        data = await addSvgPathToImage(mapping_path, data);
       } catch (e) {
         console.error(e);
       }
@@ -695,7 +695,6 @@ export async function add_brain({
         let index = mapping_inverse[i];
         if (index >= voxel_count) {
           voxel_count = index + 1;
-          console.log("voxel_count", voxel_count);
         }
       }
 
@@ -712,12 +711,13 @@ export async function add_brain({
     return [mapping, mapping_inverse, voxel_count];
   }
 
-  async function voxels_to_flatmap(data32_index, cmap_max) {
+  async function voxels_to_flatmap(data32_index, cmap_max, cmap_name='turbo') {
     console.time("voxels_to_flatmap");
     let [mapping, mapping_inverse, voxel_count] = await getMapping();
     let data32 = new Uint32Array(width * height);
 
-    let packedColor = get_cmap_uint32("turbo", cmap_max);
+    let packedColor = get_cmap_uint32(cmap_name, cmap_max);
+    console.log(packedColor);
     let packedColor2 = get_cmap_uint32("gray", 4);
     const maxColorIndex = packedColor.length - 1;
 
@@ -725,8 +725,7 @@ export async function add_brain({
       if (data32_index.length)
         console.error("data32_index.length != voxel_count");
       for (let i = 0; i < voxel_count; i++) {
-        let clr =
-          brain_data.curvature[i] > 0 ? packedColor2[2] : packedColor2[1];
+        let clr = brain_data.curvature[i] > 0 ? packedColor2[2] : packedColor2[1];
 
         for (let ii of mapping[i]) {
           data32[ii] = clr;
